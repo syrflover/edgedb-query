@@ -1,0 +1,18 @@
+[package]
+name = "edgedb-query"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+either = "1.8"
+
+edgedb-tokio = { git = "https://github.com/edgedb/edgedb-rust", rev = "ac5886a" }
+edgedb-protocol = { git = "https://github.com/edgedb/edgedb-rust", rev = "ac5886a", features = ["with-chrono"] }
+edgedb-derive = { git = "https://github.com/edgedb/edgedb-rust", rev = "ac5886a" }
+tap = "1.0"
+dyn-clone = "1.0"
+iter_tools = "0.1"
+tracing = "0.1"
+async-trait = "0.1"
