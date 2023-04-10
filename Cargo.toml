@@ -8,9 +8,9 @@ edition = "2021"
 [dependencies]
 either = "1.8"
 
-edgedb-tokio = { git = "https://github.com/edgedb/edgedb-rust", rev = "ac5886a" }
-edgedb-protocol = { git = "https://github.com/edgedb/edgedb-rust", rev = "ac5886a", features = ["with-chrono"] }
-edgedb-derive = { git = "https://github.com/edgedb/edgedb-rust", rev = "ac5886a" }
+edgedb-tokio = { git = "https://github.com/edgedb/edgedb-rust", rev = "61ce47d" }
+edgedb-protocol = { git = "https://github.com/edgedb/edgedb-rust", rev = "61ce47d", features = ["with-chrono"] }
+edgedb-derive = { git = "https://github.com/edgedb/edgedb-rust", rev = "61ce47d" }
 tap = "1.0"
 dyn-clone = "1.0"
 iter_tools = "0.1"
