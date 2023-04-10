@@ -44,8 +44,8 @@ impl<'a> ToQuery for GroupBuilder<'a> {
         let target = self.target;
         let fields = self.fields;
 
-        let mut q_original = String::new();
-        let q = &mut q_original;
+        let mut qx = String::new();
+        let q = &mut qx;
 
         push_str(q, "group ", indent);
         q.push_str(target);
@@ -80,7 +80,7 @@ impl<'a> ToQuery for GroupBuilder<'a> {
 
         push_str(q, &by, 2 + indent);
 
-        q_original
+        qx
     }
 }
 

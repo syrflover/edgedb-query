@@ -21,8 +21,8 @@ impl<'a> OrderBy<'a> {
 
 impl<'a> ToQuery for OrderBy<'a> {
     fn to_query_with_indent(&self, indent: usize) -> String {
-        let mut q_original = String::new();
-        let q = &mut q_original;
+        let mut qx = String::new();
+        let q = &mut qx;
 
         push_str(q, self.by, 2 + indent);
 
@@ -31,7 +31,7 @@ impl<'a> ToQuery for OrderBy<'a> {
             q.push_str(direction.as_str());
         }
 
-        q_original
+        qx
     }
 }
 

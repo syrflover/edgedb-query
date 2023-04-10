@@ -48,8 +48,8 @@ where
 
 impl<'a> ToQuery for With<'a> {
     fn to_query_with_indent(&self, indent: usize) -> String {
-        let mut q_original = String::new();
-        let q = &mut q_original;
+        let mut qx = String::new();
+        let q = &mut qx;
 
         push_str(q, self.name, indent);
         q.push_str(" := ");
@@ -69,6 +69,6 @@ impl<'a> ToQuery for With<'a> {
             }
         }
 
-        q_original
+        qx
     }
 }

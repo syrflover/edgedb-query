@@ -28,7 +28,7 @@ use either::Either;
 use iter_tools::Itertools;
 use tap::Tap;
 
-/// Example
+/// ### Example
 /// ```
 /// queryable!(User, [(name, String), (email, String)]);
 /// ```
