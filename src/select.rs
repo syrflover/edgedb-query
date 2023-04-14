@@ -97,7 +97,7 @@ impl<'a, T> ToQuery for SelectBuilder<'a, T>
 where
     T: IntoIterator<Item = Field<'a>> + Send + Sync + Clone + 'a,
 {
-    fn to_query_with_indent(&self, indent: usize) -> String {
+    fn to_query_with_indent(&mut self, ctx: &mut Context, indent: usize) -> String {
         let fields = self.fields.clone().into_iter();
 
         let mut qx = String::new();
@@ -105,7 +105,7 @@ where
 
         // with
         {
-            push_withs(q, &self.withs, indent);
+            push_withs(q, ctx, std::mem::take(&mut self.withs), indent);
         }
 
         // select
@@ -125,7 +125,7 @@ where
                 q.push('{');
                 q.push('\n');
 
-                push_fields(q, self.fields.clone(), 2 + indent);
+                push_fields(q, ctx, self.fields.clone(), 2 + indent);
 
                 push_str(q, "}", indent);
             }
@@ -133,12 +133,14 @@ where
 
         // expr
         {
-            if let Some(expr) = &self.expr {
+            if let Some(mut expr) = self.expr.take() {
                 q.push(' ');
                 // q.push('(');
                 q.push('\n');
 
-                q.push_str(&expr.to_query_with_indent(2 + indent));
+                let query = expr.to_query_with_indent(ctx, 2 + indent);
+
+                q.push_str(&query);
 
                 q.push('\n');
                 push(q, ')', indent);
@@ -151,26 +153,31 @@ where
                 q.push('\n');
             }
 
-            push_filter(q, self.filter.as_ref(), indent);
+            push_filter(q, ctx, self.filter.take(), indent);
         }
 
         // order by
         {
-            let mut orders = self.orders.iter();
+            let mut orders = std::mem::take(&mut self.orders).into_iter();
 
-            if let Some(first) = orders.next() {
+            if let Some(mut first) = orders.next() {
                 q.push('\n');
                 push_str(q, "order by", indent);
                 q.push('\n');
-                q.push_str(&first.to_query_with_indent(indent));
+
+                let query = first.to_query_with_indent(ctx, indent);
+
+                q.push_str(&query);
             }
 
-            for ord in orders {
+            for mut ord in orders {
                 q.push(' ');
                 q.push_str("then");
                 q.push('\n');
 
-                q.push_str(&ord.to_query_with_indent(indent));
+                let query = ord.to_query_with_indent(ctx, indent);
+
+                q.push_str(&query);
             }
         }
 
@@ -179,7 +186,7 @@ where
             if skip > 0 {
                 q.push('\n');
                 push_str(q, "offset ", indent);
-                q.push_str(&skip.to_string());
+                push_arg(q, ctx, skip as i32)
             }
         }
 
@@ -187,63 +194,46 @@ where
         if let Some(take) = self.take {
             q.push('\n');
             push_str(q, "limit ", indent);
-            q.push_str(&take.to_string());
+            push_arg(q, ctx, take as i32);
         }
 
         qx
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::repository::edgedb::query::order_by::{order_by, ASC, DESC};
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     use super::*;
-//     use FilterOperator::*;
+    #[test]
+    fn print() {
+        let (r, _) = select("target", fields! { id })
+            .filter(filter().add(AND, "a = $?", 1))
+            .to_query();
 
-//     #[test]
-//     fn print() {
-//         let mut r = SelectBuilder::new("Book", "uid, title, book_tags: { kind, name }");
+        println!("{r}");
+    }
 
-//         r.filter(
-//             None,
-//             Filter::new().add(None, ".uid = $:", 2217180).add(
-//                 And,
-//                 ".kind = <BookKind>'$:'",
-//                 "Female",
-//             ),
-//         );
+    #[tokio::test]
+    async fn select_args() {
+        let client = setup().await.unwrap();
 
-//         let r = r.to_query();
+        // let r = client
+        //     .query::<i32, _>(
+        //         "select <array<int32>>$0",
+        //         &Value::Array(vec![Value::Int32(12345)]),
+        //     )
+        //     .await
+        //     .unwrap();
 
-//         println!("{r}");
+        let r = select("Book", [])
+            .with(with("args", 12345))
+            .query_single::<i32>(&client)
+            .await
+            .unwrap();
 
-//         println!("---------------------");
+        tracing::debug!("{r:?}");
 
-//         let mut r = SelectBuilder::new("Book", "uid, title, book_tags: { kind, name }");
-
-//         r.filter(
-//             None,
-//             Filter::new().add(None, ".uid = $:", 2217180).add(
-//                 And,
-//                 ".kind = <BookKind>'$:'",
-//                 "Female",
-//             ),
-//         );
-
-//         r.filter(None, Filter::new().add(None, ".title = $:", "'sex'"));
-
-//         r.order_by(order_by(".uid", DESC))
-//             .order_by(order_by(".title", ASC));
-
-//         r.skip(25);
-
-//         r.take(100);
-
-//         // r.with(With::new("abcd", "select book"));
-
-//         let r = r.to_query();
-
-//         println!("{r}");
-//     }
-// }
+        // assert_eq!(r, Some((12345,)));
+    }
+}

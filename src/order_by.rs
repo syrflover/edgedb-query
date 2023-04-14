@@ -1,4 +1,4 @@
-use super::{push_str, ToQuery};
+use super::*;
 
 #[derive(Clone)]
 pub struct OrderBy<'a> {
@@ -20,7 +20,7 @@ impl<'a> OrderBy<'a> {
 }
 
 impl<'a> ToQuery for OrderBy<'a> {
-    fn to_query_with_indent(&self, indent: usize) -> String {
+    fn to_query_with_indent(&mut self, _ctx: &mut Context, indent: usize) -> String {
         let mut qx = String::new();
         let q = &mut qx;
 

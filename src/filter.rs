@@ -31,7 +31,7 @@ impl AndOr {
 
 // }
 
-type Inner<'a> = (&'a str, Box<dyn ToQueryArg + 'a>);
+type Inner<'a> = (&'a str, Value<'a>);
 
 #[derive(Clone)]
 pub struct Filter<'a> {
@@ -69,13 +69,14 @@ impl<'a> Filter<'a> {
         self
     }
 
-    pub fn add(mut self, and_or: AndOr, q: &'a str, arg: impl ToQueryArg + 'a) -> Self {
-        self.qs.push((and_or, (Either::Left((q, Box::new(arg))))));
+    pub fn add(mut self, and_or: AndOr, q: &'a str, arg: impl IntoValue<'a>) -> Self {
+        self.qs
+            .push((and_or, (Either::Left((q, arg.into_value())))));
 
         self
     }
 
-    pub fn add_opt(self, and_or: AndOr, q: &'a str, arg: Option<impl ToQueryArg + 'a>) -> Self {
+    pub fn add_opt(self, and_or: AndOr, q: &'a str, arg: Option<impl IntoValue<'a>>) -> Self {
         if let Some(arg) = arg {
             self.add(and_or, q, arg)
         } else {
@@ -93,7 +94,12 @@ impl<'a> Filter<'a> {
         self.qs.is_empty()
     }
 
-    fn to_query_internal(&self, indent: usize, wrapped_by_parentheses: bool) -> String {
+    fn to_query_internal(
+        &mut self,
+        ctx: &mut Context,
+        indent: usize,
+        wrapped_by_parentheses: bool,
+    ) -> String {
         let mut qx = String::new();
         let q = &mut qx;
 
@@ -114,7 +120,7 @@ impl<'a> Filter<'a> {
             q.push('\n');
         }
 
-        let mut qs = self.qs.iter();
+        let mut qs = std::mem::take(&mut self.qs).into_iter();
 
         if let Some((_, x)) = qs.next() {
             match x {
@@ -125,11 +131,12 @@ impl<'a> Filter<'a> {
                         push_str(q, "", 2 + indent);
                     }
 
-                    q.push_str(&x.replacen(ARG_IDENTITY, &arg.to_query_arg(), 1));
+                    q.push_str(&replace_arg(x, ctx, arg));
                 }
-                Either::Right(x) => {
-                    //
-                    q.push_str(&x.to_query_internal(indent, true));
+                Either::Right(mut x) => {
+                    let query = x.to_query_internal(ctx, indent, true);
+
+                    q.push_str(&query);
                 }
             }
         }
@@ -142,16 +149,16 @@ impl<'a> Filter<'a> {
 
             match x {
                 Either::Left((x, arg)) => {
-                    let x = x.replacen(ARG_IDENTITY, &arg.to_query_arg(), 1);
-                    push_str(q, &x, 2 + indent);
+                    push_str(q, &replace_arg(x, ctx, arg), 2 + indent);
 
                     if wrapped_by_parentheses {
                         q.push(')');
                     }
                 }
-                Either::Right(x) => {
-                    //
-                    q.push_str(&x.to_query_internal(indent, true));
+                Either::Right(mut x) => {
+                    let query = x.to_query_internal(ctx, indent, true);
+
+                    q.push_str(&query);
                 }
             }
         }
@@ -166,8 +173,8 @@ impl<'a> Filter<'a> {
 }
 
 impl<'a> ToQuery for Filter<'a> {
-    fn to_query_with_indent(&self, indent: usize) -> String {
-        self.to_query_internal(indent, false)
+    fn to_query_with_indent(&mut self, ctx: &mut Context, indent: usize) -> String {
+        self.to_query_internal(ctx, indent, false)
     }
 }
 
@@ -177,15 +184,15 @@ mod tests {
 
     #[test]
     fn print() {
-        let r = Filter::new(NOT)
+        let (r, _) = Filter::new(NOT)
             .func("any")
-            .add(AND, ".uid = $:", 12345)
-            .add(AND, ".title = $:", "arg")
+            .add(AND, ".uid = $?", 12345)
+            .add(AND, ".title = $?", "arg".to_string())
             .add_filter(
                 AND,
                 Filter::new(None)
-                    .add(AND, ".kind = $:", "arg")
-                    .add(AND, ".name = $:", "arg"),
+                    .add(AND, ".kind = $?", "arg".to_string())
+                    .add(AND, ".name = $?", "arg".to_string()),
             )
             .to_query();
 

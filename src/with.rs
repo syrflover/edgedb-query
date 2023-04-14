@@ -1,11 +1,11 @@
 use either::Either;
 
-use super::{push_str, ToQuery, ToQueryArg};
+use super::*;
 
 #[derive(Clone)]
 pub struct With<'a> {
     pub name: &'a str,
-    x: Option<Either<Box<dyn ToQueryArg + 'a>, Box<dyn ToQuery + 'a>>>,
+    x: Option<Either<Value<'a>, Box<dyn ToQuery + 'a>>>,
 }
 
 impl<'a> With<'a> {
@@ -22,20 +22,14 @@ impl<'a> With<'a> {
         self
     }
 
-    pub fn value<T>(mut self, value: T) -> Self
-    where
-        T: ToQueryArg + 'a,
-    {
-        self.x.replace(Either::Left(Box::new(value)));
+    pub fn value(mut self, value: impl IntoValue<'a>) -> Self {
+        self.x.replace(Either::Left(value.into_value()));
 
         self
     }
 }
 
-pub fn with<'a, T>(name: &'a str, value: T) -> With<'a>
-where
-    T: ToQueryArg + 'a,
-{
+pub fn with<'a>(name: &'a str, value: impl IntoValue<'a>) -> With<'a> {
     With::new(name).value(value)
 }
 
@@ -47,22 +41,24 @@ where
 }
 
 impl<'a> ToQuery for With<'a> {
-    fn to_query_with_indent(&self, indent: usize) -> String {
+    fn to_query_with_indent(&mut self, ctx: &mut Context, indent: usize) -> String {
         let mut qx = String::new();
         let q = &mut qx;
 
         push_str(q, self.name, indent);
         q.push_str(" := ");
 
-        match self.x.as_ref().expect("not set value from With") {
+        match self.x.take().expect("not set value from With") {
             Either::Left(value) => {
-                q.push_str(&value.to_query_arg());
+                push_arg(q, ctx, value);
             }
-            Either::Right(expr) => {
+            Either::Right(mut expr) => {
                 q.push('(');
                 q.push('\n');
 
-                q.push_str(&expr.to_query_with_indent(2 + indent));
+                let query = expr.to_query_with_indent(ctx, 2 + indent);
+
+                q.push_str(&query);
 
                 q.push('\n');
                 push_str(q, ")", indent);

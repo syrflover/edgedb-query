@@ -1,4 +1,4 @@
-use super::{push_str, push_withs, ToQuery, With};
+use super::*;
 
 #[derive(Clone)]
 pub struct ForInBuilder<'a> {
@@ -39,13 +39,13 @@ impl<'a> ForInBuilder<'a> {
 }
 
 impl<'a> ToQuery for ForInBuilder<'a> {
-    fn to_query_with_indent(&self, indent: usize) -> String {
+    fn to_query_with_indent(&mut self, ctx: &mut Context, indent: usize) -> String {
         let mut qx = String::new();
         let q = &mut qx;
 
         {
             if !self.withs.is_empty() {
-                push_withs(q, self.withs.iter(), indent);
+                push_withs(q, ctx, std::mem::take(&mut self.withs), indent);
             }
         }
 
@@ -58,12 +58,11 @@ impl<'a> ToQuery for ForInBuilder<'a> {
         q.push('(');
         q.push('\n');
 
-        let expr = self
-            .expr
-            .as_ref()
-            .expect("not set `expr` from ForInBuilder");
+        let mut expr = self.expr.take().expect("not set `expr` from ForInBuilder");
 
-        q.push_str(&expr.to_query_with_indent(2 + indent));
+        let query = expr.to_query_with_indent(ctx, 2 + indent);
+
+        q.push_str(&query);
 
         q.push('\n');
 

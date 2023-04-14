@@ -53,13 +53,13 @@ impl<'a> Default for OnConflict<'a> {
 }
 
 impl<'a> ToQuery for OnConflict<'a> {
-    fn to_query_with_indent(&self, indent: usize) -> String {
+    fn to_query_with_indent(&mut self, ctx: &mut Context, indent: usize) -> String {
         let mut qx = String::new();
         let q = &mut qx;
 
         push_str(q, "unless conflict", indent);
 
-        if let (Some(field), Some(expr)) = (self.field, self.else_expr.as_ref()) {
+        if let (Some(field), Some(mut expr)) = (self.field, self.else_expr.take()) {
             q.push(' ');
             q.push_str("on");
             q.push(' ');
@@ -72,7 +72,9 @@ impl<'a> ToQuery for OnConflict<'a> {
             q.push('(');
             q.push('\n');
 
-            q.push_str(&expr.to_query_with_indent(2 + indent));
+            let query = expr.to_query_with_indent(ctx, 2 + indent);
+
+            q.push_str(&query);
             q.push('\n');
             push(q, ')', indent);
         }
@@ -109,11 +111,8 @@ impl<'a> InsertBuilder<'a> {
         self
     }
 
-    pub fn set<T>(mut self, field: &'a str, v: T) -> Self
-    where
-        T: ToQueryArg + 'a,
-    {
-        self.values.push((field, Either::Left(Box::new(v))));
+    pub fn set(mut self, field: &'a str, v: impl IntoValue<'a>) -> Self {
+        self.values.push((field, Either::Left(v.into_value())));
 
         self
     }
@@ -135,13 +134,13 @@ impl<'a> InsertBuilder<'a> {
 }
 
 impl<'a> ToQuery for InsertBuilder<'a> {
-    fn to_query_with_indent(&self, indent: usize) -> String {
+    fn to_query_with_indent(&mut self, ctx: &mut Context, indent: usize) -> String {
         let mut qx = String::new();
         let q = &mut qx;
 
         // with
         {
-            push_withs(q, self.withs.iter(), indent);
+            push_withs(q, ctx, std::mem::take(&mut self.withs), indent);
         }
 
         push_str(q, "insert", indent);
@@ -151,14 +150,16 @@ impl<'a> ToQuery for InsertBuilder<'a> {
 
         // set values
         {
-            push_object(q, &self.values, indent);
+            push_object(q, ctx, std::mem::take(&mut self.values), indent);
         }
 
         // on conflict
-        if let Some(on_conflict) = &self.on_conflict {
+        if let Some(mut on_conflict) = self.on_conflict.take() {
             q.push('\n');
 
-            q.push_str(&on_conflict.to_query_with_indent(indent));
+            let query = on_conflict.to_query_with_indent(ctx, indent);
+
+            q.push_str(&query);
         }
 
         qx

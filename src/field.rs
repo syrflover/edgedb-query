@@ -1,6 +1,6 @@
 use either::Either;
 
-use super::{push_str, ToQuery};
+use super::*;
 
 #[derive(Clone)]
 pub struct Field<'a> {
@@ -54,13 +54,13 @@ impl<'a> Field<'a> {
 }
 
 impl<'a> ToQuery for Field<'a> {
-    fn to_query_with_indent(&self, indent: usize) -> String {
+    fn to_query_with_indent(&mut self, ctx: &mut Context, indent: usize) -> String {
         let mut qx = String::new();
         let q = &mut qx;
 
         push_str(q, self.name, indent);
 
-        match &self.fields {
+        match self.fields.as_mut() {
             Either::Left(expr) => {
                 q.push(' ');
                 q.push_str(":=");
@@ -69,7 +69,9 @@ impl<'a> ToQuery for Field<'a> {
                 q.push('(');
                 q.push('\n');
 
-                q.push_str(&expr.to_query_with_indent(2 + indent));
+                let query = expr.to_query_with_indent(ctx, 2 + indent);
+
+                q.push_str(&query);
 
                 q.push('\n');
                 push_str(q, ")", indent);
@@ -81,15 +83,20 @@ impl<'a> ToQuery for Field<'a> {
                 q.push('{');
                 q.push('\n');
 
-                let mut nested_fields = nested_fields.iter();
+                let mut nested_fields = nested_fields.into_iter();
 
                 if let Some(nested) = nested_fields.next() {
-                    q.push_str(&nested.to_query_with_indent(2 + indent));
+                    let query = nested.to_query_with_indent(ctx, 2 + indent);
+
+                    q.push_str(&query);
                 }
 
                 for nested in nested_fields {
                     q.push('\n');
-                    q.push_str(&nested.to_query_with_indent(2 + indent));
+
+                    let query = nested.to_query_with_indent(ctx, 2 + indent);
+
+                    q.push_str(&query);
                 }
 
                 q.push('\n');
@@ -185,7 +192,7 @@ mod tests {
 
         let mut r = String::new();
 
-        push_fields(&mut r, fields, 0);
+        push_fields(&mut r, &mut Context::new(), fields, 0);
 
         println!("{r}");
     }

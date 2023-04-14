@@ -8,9 +8,8 @@ mod insert;
 mod order_by;
 mod select;
 mod update;
+mod value;
 mod with;
-
-use std::time::SystemTime;
 
 pub use field::*;
 pub use filter::*;
@@ -19,13 +18,17 @@ pub use group::*;
 pub use insert::*;
 pub use order_by::*;
 pub use select::*;
+#[cfg(test)]
+pub use tests::*;
 pub use update::*;
+pub use value::*;
 pub use with::*;
 
+use std::time::SystemTime;
+
 use dyn_clone::{clone_trait_object, DynClone};
-use edgedb_protocol::{model::LocalDatetime, queryable::Queryable};
+use edgedb_protocol::QueryResult;
 use either::Either;
-use iter_tools::Itertools;
 use tap::Tap;
 
 /// ### Example
@@ -45,7 +48,7 @@ macro_rules! queryable {
     };
 }
 
-pub const ARG_IDENTITY: &str = "$:";
+pub const ARG_IDENTITY: &str = "$?";
 
 fn push(q: &mut String, char: char, indent: usize) {
     for _ in 0..indent {
@@ -63,33 +66,81 @@ fn push_str(q: &mut String, string: &str, indent: usize) {
     q.push_str(string);
 }
 
-fn push_withs<'a>(q: &mut String, withs: impl IntoIterator<Item = &'a With<'a>>, indent: usize) {
+fn replace_arg<'a>(x: &str, ctx: &'a mut Context, arg: impl IntoValue<'a>) -> String {
+    let arg = arg.into_value();
+
+    let r = x.replacen(
+        ARG_IDENTITY,
+        &format!("<{}>${}", arg.kind, ctx.args.len()),
+        1,
+    );
+
+    ctx.args.push(arg.inner);
+
+    r
+}
+
+fn push_arg<'a>(q: &mut String, ctx: &'a mut Context, arg: impl IntoValue<'a>) {
+    let arg = arg.into_value();
+
+    q.push('<');
+    q.push_str(&arg.kind);
+    q.push('>');
+    q.push('$');
+    q.push_str(&ctx.args.len().to_string());
+
+    ctx.args.push(arg.inner);
+}
+
+fn push_withs<'a>(
+    q: &mut String,
+    ctx: &'a mut Context,
+    withs: impl IntoIterator<Item = With<'a>>,
+    indent: usize,
+) {
     let mut withs = withs.into_iter();
 
-    if let Some(first) = withs.next() {
+    if let Some(mut first) = withs.next() {
         push_str(q, "with", indent);
         q.push('\n');
-        q.push_str(&first.to_query_with_indent(2 + indent));
+
+        let query = first.to_query_with_indent(ctx, 2 + indent);
+
+        q.push_str(&query);
         q.push(',');
         q.push('\n');
     }
 
-    for with in withs {
-        q.push_str(&with.to_query_with_indent(2 + indent));
+    for mut with in withs {
+        let query = with.to_query_with_indent(ctx, 2 + indent);
+
+        q.push_str(&query);
         q.push(',');
         q.push('\n');
     }
 }
 
-fn push_fields<'a>(q: &mut String, fields: impl IntoIterator<Item = Field<'a>>, indent: usize) {
-    for field in fields {
-        q.push_str(&field.to_query_with_indent(indent));
+fn push_fields<'a>(
+    q: &mut String,
+    ctx: &mut Context,
+    fields: impl IntoIterator<Item = Field<'a>>,
+    indent: usize,
+) {
+    for mut field in fields {
+        let query = field.to_query_with_indent(ctx, indent);
+
+        q.push_str(&query);
         q.push('\n');
     }
 }
 
-fn push_filter<'a>(q: &mut String, filter: Option<&'a Filter<'a>>, indent: usize) {
-    if let Some(filter) = filter {
+fn push_filter<'a>(
+    q: &mut String,
+    ctx: &'a mut Context,
+    filter: Option<Filter<'a>>,
+    indent: usize,
+) {
+    if let Some(mut filter) = filter {
         if filter.is_empty() {
             return;
         }
@@ -97,13 +148,16 @@ fn push_filter<'a>(q: &mut String, filter: Option<&'a Filter<'a>>, indent: usize
         push_str(q, "filter", indent);
         q.push('\n');
 
-        q.push_str(&filter.to_query_with_indent(indent));
+        let query = filter.to_query_with_indent(ctx, indent);
+
+        q.push_str(&query);
     }
 }
 
 fn push_object<'a>(
     q: &mut String,
-    obj: impl IntoIterator<Item = &'a (&'a str, QueryArgOrExpr<'a>)>,
+    ctx: &'a mut Context,
+    obj: impl IntoIterator<Item = (&'a str, QueryArgOrExpr<'a>)>,
     indent: usize,
 ) {
     q.push('{');
@@ -118,14 +172,17 @@ fn push_object<'a>(
 
         match value {
             Either::Left(value) => {
-                q.push_str(&value.to_query_arg());
+                push_arg(q, ctx, value);
+                // q.push_str(&value.to_query_arg());
             }
 
-            Either::Right(expr) => {
+            Either::Right(mut expr) => {
                 q.push('(');
                 q.push('\n');
 
-                q.push_str(&expr.to_query_with_indent(4 + indent));
+                let query = expr.to_query_with_indent(ctx, 4 + indent);
+
+                q.push_str(&query);
 
                 q.push('\n');
                 push(q, ')', 2 + indent);
@@ -148,7 +205,7 @@ pub trait TypeName {
     fn type_name() -> &'static str;
 }
 
-type QueryArgOrExpr<'a> = Either<Box<dyn ToQueryArg + 'a>, Box<dyn ToQuery + 'a>>;
+type QueryArgOrExpr<'a> = Either<Value<'a>, Box<dyn ToQuery + 'a>>;
 
 #[derive(Clone)]
 pub struct Raw<'a>(&'a str);
@@ -164,7 +221,7 @@ impl<'a> Raw<'a> {
 }
 
 impl<'a> ToQuery for Raw<'a> {
-    fn to_query_with_indent(&self, indent: usize) -> String {
+    fn to_query_with_indent(&mut self, _ctx: &mut Context, indent: usize) -> String {
         let mut qx = String::new();
         let q = &mut qx;
 
@@ -174,37 +231,42 @@ impl<'a> ToQuery for Raw<'a> {
     }
 }
 
-impl<'a> ToQueryArg for Raw<'a> {
-    fn to_query_arg(&self) -> String {
-        self.0.to_string()
+#[derive(Default)]
+pub struct Context {
+    pub(crate) args: Vec<edgedb_protocol::value::Value>,
+}
+
+impl Context {
+    pub fn new() -> Self {
+        Self { args: Vec::new() }
     }
 }
 
 pub trait ToQuery: DynClone + Send + Sync {
-    fn to_query_with_indent(&self, indent: usize) -> String;
+    fn to_query_with_indent(&mut self, ctx: &mut Context, indent: usize) -> String;
 
-    fn to_query(&self) -> String {
-        self.to_query_with_indent(0)
-            .tap(|query| tracing::debug!("\n{query}"))
+    fn to_query(&mut self) -> (String, Context) {
+        let mut ctx = Context::new();
+
+        let query = self.to_query_with_indent(&mut ctx, 0);
+
+        tracing::debug!("\n{query}");
+        tracing::debug!("query args: {:?}", ctx.args);
+
+        (query, ctx)
     }
 }
 
 clone_trait_object!(ToQuery);
 
-impl<T: Clone + ToQuery> ToQuery for &T {
-    fn to_query_with_indent(&self, indent: usize) -> String {
-        (*self).to_query_with_indent(indent)
-    }
-}
-
 #[async_trait::async_trait]
 pub trait QueryExecution: Sized {
-    async fn query<T: Queryable + Send>(
+    async fn query<T: QueryResult + Send>(
         self,
         edgedb: &edgedb_tokio::Client,
     ) -> Result<Vec<T>, edgedb_tokio::Error>;
 
-    async fn query_single<T: Queryable + Send>(
+    async fn query_single<T: QueryResult + Send>(
         self,
         edgedb: &edgedb_tokio::Client,
     ) -> Result<Option<T>, edgedb_tokio::Error>;
@@ -236,154 +298,95 @@ impl<Q> QueryExecution for Q
 where
     Q: ToQuery,
 {
-    async fn query<T: Queryable + Send>(
-        self,
+    async fn query<T: QueryResult + Send>(
+        mut self,
         edgedb: &edgedb_tokio::Client,
     ) -> Result<Vec<T>, edgedb_tokio::Error> {
-        elapsed!(edgedb.query::<T, _>(&self.to_query(), &()).await)
+        let (query, ctx) = self.to_query();
+
+        elapsed!(edgedb.query::<T, _>(&query, &ctx.args).await)
     }
 
-    async fn query_single<T: Queryable + Send>(
-        self,
+    async fn query_single<T: QueryResult + Send>(
+        mut self,
         edgedb: &edgedb_tokio::Client,
     ) -> Result<Option<T>, edgedb_tokio::Error> {
-        elapsed!(edgedb.query_single::<T, _>(&self.to_query(), &()).await)
+        let (query, ctx) = self.to_query();
+
+        // let shape = (0..ctx.args.len())
+        //     .map(|i| descriptors::TupleElement {
+        //         name: i.to_string(),
+        //         type_pos: descriptors::TypePos(0),
+        //     })
+        //     .collect::<Vec<_>>();
+
+        // let args = Value::NamedTuple {
+        //     shape: NamedTupleShape::from(&*shape),
+        //     fields: ctx.args,
+        // };
+
+        // let args = Value::SparseObject(SparseObject::from_pairs(
+        //     ctx.args
+        //         .into_iter()
+        //         .enumerate()
+        //         .map(|(i, arg)| (i.to_string(), arg)),
+        // ));
+
+        // let args = Value::Tuple(ctx.args);
+
+        elapsed!(edgedb.query_single::<T, _>(&query, &ctx.args).await)
     }
 
     async fn query_json(
-        self,
+        mut self,
         edgedb: &edgedb_tokio::Client,
     ) -> Result<edgedb_protocol::model::Json, edgedb_tokio::Error> {
-        elapsed!(edgedb.query_json(&self.to_query(), &()).await)
+        let (query, ctx) = self.to_query();
+
+        elapsed!(edgedb.query_json(&query, &ctx.args).await)
     }
 
     async fn query_single_json(
-        self,
+        mut self,
         edgedb: &edgedb_tokio::Client,
     ) -> Result<Option<edgedb_protocol::model::Json>, edgedb_tokio::Error> {
-        elapsed!(edgedb.query_single_json(&self.to_query(), &()).await)
+        let (query, ctx) = self.to_query();
+
+        elapsed!(edgedb.query_single_json(&query, &ctx.args).await)
     }
 }
 
-pub trait ToQueryArg: DynClone + Send + Sync {
-    fn to_query_arg(&self) -> String;
-}
+#[cfg(test)]
+mod tests {
+    use edgedb_tokio::TlsSecurity;
 
-clone_trait_object!(ToQueryArg);
+    fn tracing() {
+        if std::env::args().any(|arg| arg == "--nocapture") {
+            let subscriber = tracing_subscriber::fmt()
+                .with_max_level(tracing::Level::DEBUG)
+                .with_line_number(true)
+                .finish();
 
-impl<T> ToQueryArg for Vec<T>
-where
-    T: ToQueryArg + Clone,
-{
-    fn to_query_arg(&self) -> String {
-        (&self).to_query_arg()
-    }
-}
-
-impl<T> ToQueryArg for &Vec<T>
-where
-    T: ToQueryArg,
-{
-    fn to_query_arg(&self) -> String {
-        let r = self.iter().map(|x| x.to_query_arg()).join(", ");
-
-        format!("{{ {r} }}")
-    }
-}
-
-impl ToQueryArg for String {
-    fn to_query_arg(&self) -> String {
-        self.as_str().to_query_arg()
-    }
-}
-
-impl ToQueryArg for &String {
-    fn to_query_arg(&self) -> String {
-        self.as_str().to_query_arg()
-    }
-}
-
-impl ToQueryArg for &str {
-    fn to_query_arg(&self) -> String {
-        let escaped_single_quote = self.replace('\'', "\\'");
-        format!("<str>'{escaped_single_quote}'")
-    }
-}
-
-impl ToQueryArg for edgedb_protocol::model::Datetime {
-    fn to_query_arg(&self) -> String {
-        let datetime = LocalDatetime::from(*self);
-        format!("<datetime>'{}T{}+00'", datetime.date(), datetime.time())
-    }
-}
-
-macro_rules! impl_to_query_arg {
-    ($($ty:ty $(,)?)*) => {
-        $(
-            impl ToQueryArg for $ty {
-                fn to_query_arg(&self) -> String {
-                    // format!("<{}>{self}", stringify!($ty))
-                    self.to_string()
-                }
-            }
-        )*
-    };
-}
-
-// fn cast_type(x: &str) -> Option<&str> {
-//     match x {
-//         "bool" => "bool",
-//         "f32" => "f32",
-//         "f64" => "f64",
-//         "Uuid" => "uuid"
-//     }
-// }
-
-impl_to_query_arg![i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize, bool];
-
-macro_rules! impl_to_query_arg_for_tuple {
-    ($($name:ident $(,)?)+) => {
-
-        impl<$($name,)+> ToQueryArg for ($($name,)+)
-        where
-            $(
-                $name: ToQueryArg + Clone,
-            )+
-        {
-            fn to_query_arg(&self) -> String {
-                #[allow(non_snake_case)]
-                let ($($name,)+) = self;
-                let mut q = String::new();
-
-                q.push('(');
-
-                $(
-                    q.push_str(&$name.to_query_arg());
-                    q.push(',');
-                )+
-
-                q.push(')');
-
-                q
-
-            }
+            tracing::subscriber::set_global_default(subscriber).ok();
         }
-};
+    }
+
+    pub async fn setup() -> Result<edgedb_tokio::Client, edgedb_tokio::Error> {
+        tracing();
+        dotenv::dotenv().ok();
+
+        let edgedb_dsn = std::env::var("EDGEDB_DSN").unwrap();
+
+        let config = edgedb_tokio::Builder::new()
+            .dsn(&edgedb_dsn)?
+            .tls_security(TlsSecurity::Insecure)
+            .build_env()
+            .await?;
+
+        let client = edgedb_tokio::Client::new(&config);
+
+        client.ensure_connected().await?;
+
+        Ok(client)
+    }
 }
-
-impl_to_query_arg_for_tuple![T1];
-impl_to_query_arg_for_tuple![T1, T2];
-impl_to_query_arg_for_tuple![T1, T2, T3];
-impl_to_query_arg_for_tuple![T1, T2, T3, T4];
-impl_to_query_arg_for_tuple![T1, T2, T3, T4, T5];
-impl_to_query_arg_for_tuple![T1, T2, T3, T4, T5, T6];
-impl_to_query_arg_for_tuple![T1, T2, T3, T4, T5, T6, T7];
-impl_to_query_arg_for_tuple![T1, T2, T3, T4, T5, T6, T7, T8];
-impl_to_query_arg_for_tuple![T1, T2, T3, T4, T5, T6, T7, T8, T9];
-impl_to_query_arg_for_tuple![T1, T2, T3, T4, T5, T6, T7, T8, T9, T10];
-impl_to_query_arg_for_tuple![T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11];
-impl_to_query_arg_for_tuple![T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12];
-
-// TODO:
-// - f32, f64
-// - type cast <type>'aa'

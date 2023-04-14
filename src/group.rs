@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use edgedb_protocol::queryable::Queryable;
 
-use super::{push_str, ToQuery};
+use super::*;
 
 #[derive(Clone)]
 pub struct GroupBuilder<'a> {
@@ -40,7 +40,7 @@ impl<'a> GroupBuilder<'a> {
 }
 
 impl<'a> ToQuery for GroupBuilder<'a> {
-    fn to_query_with_indent(&self, indent: usize) -> String {
+    fn to_query_with_indent(&mut self, _ctx: &mut Context, indent: usize) -> String {
         let target = self.target;
         let fields = self.fields;
 

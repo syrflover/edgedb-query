@@ -36,24 +36,21 @@ impl<'a> UpdateBuilder<'a> {
         self
     }
 
-    pub fn set<T>(mut self, field: &'a str, value: T) -> Self
-    where
-        T: ToQueryArg + 'a,
-    {
-        self.values.push((field, Either::Left(Box::new(value))));
+    pub fn set(mut self, field: &'a str, value: impl IntoValue<'a>) -> Self {
+        self.values.push((field, Either::Left(value.into_value())));
 
         self
     }
 }
 
 impl<'a> ToQuery for UpdateBuilder<'a> {
-    fn to_query_with_indent(&self, indent: usize) -> String {
+    fn to_query_with_indent(&mut self, ctx: &mut Context, indent: usize) -> String {
         let mut qx = String::new();
         let q = &mut qx;
 
         // with
         {
-            push_withs(q, &self.withs, indent);
+            push_withs(q, ctx, std::mem::take(&mut self.withs), indent);
         }
 
         // update
@@ -68,7 +65,7 @@ impl<'a> ToQuery for UpdateBuilder<'a> {
 
         // filter
         {
-            push_filter(q, self.filter.as_ref(), indent);
+            push_filter(q, ctx, self.filter.take(), indent);
         }
 
         q.push('\n');
@@ -78,7 +75,7 @@ impl<'a> ToQuery for UpdateBuilder<'a> {
 
         // set values
         {
-            push_object(q, &self.values, indent);
+            push_object(q, ctx, std::mem::take(&mut self.values), indent);
         }
 
         qx
@@ -91,8 +88,8 @@ mod tests {
 
     #[test]
     fn print() {
-        let query = update("Book")
-            .filter(filter().add(AND, ".uid = $:", 1234))
+        let (query, _) = update("Book")
+            .filter(filter().add(AND, ".uid = $?", 1234))
             .set("released", true)
             .to_query();
 
