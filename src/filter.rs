@@ -179,13 +179,13 @@ mod tests {
     fn print() {
         let r = Filter::new(NOT)
             .func("any")
-            .add(AND, ".uid = $:", 12345)
-            .add(AND, ".title = $:", "arg")
+            .add(AND, ".uid = $?", 12345)
+            .add(AND, ".title = $?", "arg")
             .add_filter(
                 AND,
                 Filter::new(None)
-                    .add(AND, ".kind = $:", "arg")
-                    .add(AND, ".name = $:", "arg"),
+                    .add(AND, ".kind = $?", "arg")
+                    .add(AND, ".name = $?", "arg"),
             )
             .to_query();
 

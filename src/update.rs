@@ -92,7 +92,7 @@ mod tests {
     #[test]
     fn print() {
         let query = update("Book")
-            .filter(filter().add(AND, ".uid = $:", 1234))
+            .filter(filter().add(AND, ".uid = $?", 1234))
             .set("released", true)
             .to_query();
 

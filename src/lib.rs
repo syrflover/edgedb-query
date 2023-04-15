@@ -45,7 +45,7 @@ macro_rules! queryable {
     };
 }
 
-pub const ARG_IDENTITY: &str = "$:";
+pub const ARG_IDENTITY: &str = "$?";
 
 fn push(q: &mut String, char: char, indent: usize) {
     for _ in 0..indent {

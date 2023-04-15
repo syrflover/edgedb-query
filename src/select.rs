@@ -207,9 +207,9 @@ where
 
 //         r.filter(
 //             None,
-//             Filter::new().add(None, ".uid = $:", 2217180).add(
+//             Filter::new().add(None, ".uid = $?", 2217180).add(
 //                 And,
-//                 ".kind = <BookKind>'$:'",
+//                 ".kind = <BookKind>'$?'",
 //                 "Female",
 //             ),
 //         );
@@ -224,14 +224,14 @@ where
 
 //         r.filter(
 //             None,
-//             Filter::new().add(None, ".uid = $:", 2217180).add(
+//             Filter::new().add(None, ".uid = $?", 2217180).add(
 //                 And,
-//                 ".kind = <BookKind>'$:'",
+//                 ".kind = <BookKind>'$?'",
 //                 "Female",
 //             ),
 //         );
 
-//         r.filter(None, Filter::new().add(None, ".title = $:", "'sex'"));
+//         r.filter(None, Filter::new().add(None, ".title = $?", "'sex'"));
 
 //         r.order_by(order_by(".uid", DESC))
 //             .order_by(order_by(".title", ASC));

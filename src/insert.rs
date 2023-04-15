@@ -174,7 +174,7 @@ mod tests {
     // #[test]
     // fn print() {
     //     let tag_select =
-    //         select("BookTag", "").filter(None, filter().add(None, ".kind = $:", "ㅁㅁ"));
+    //         select("BookTag", "").filter(None, filter().add(None, ".kind = $?", "ㅁㅁ"));
 
     //     let r = insert("Book")
     //         .set(".title", "하안되겟네")
