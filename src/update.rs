@@ -55,6 +55,15 @@ impl<'a> UpdateBuilder<'a> {
             self
         }
     }
+
+    pub fn set_expr<T>(mut self, field: &'a str, expr: T) -> Self
+    where
+        T: ToQuery + 'a,
+    {
+        self.values.push((field, Either::Right(Box::new(expr))));
+
+        self
+    }
 }
 
 impl<'a> ToQuery for UpdateBuilder<'a> {
