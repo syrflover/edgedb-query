@@ -44,6 +44,17 @@ impl<'a> UpdateBuilder<'a> {
 
         self
     }
+
+    pub fn set_opt<T>(self, field: &'a str, opt_value: Option<T>) -> Self
+    where
+        T: ToQueryArg + 'a,
+    {
+        if let Some(value) = opt_value {
+            self.set(field, value)
+        } else {
+            self
+        }
+    }
 }
 
 impl<'a> ToQuery for UpdateBuilder<'a> {
