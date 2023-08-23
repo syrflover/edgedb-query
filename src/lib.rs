@@ -199,24 +199,24 @@ impl<T: Clone + ToQuery> ToQuery for &T {
 
 #[async_trait::async_trait]
 pub trait QueryExecution: Sized {
-    async fn query<T: Queryable + Send>(
+    async fn query<'a, T: Queryable + Send>(
         self,
-        edgedb: &edgedb_tokio::Client,
+        connection: impl Into<Connection<'a>> + Send,
     ) -> Result<Vec<T>, edgedb_tokio::Error>;
 
-    async fn query_single<T: Queryable + Send>(
+    async fn query_single<'a, T: Queryable + Send>(
         self,
-        edgedb: &edgedb_tokio::Client,
+        connection: impl Into<Connection<'a>> + Send,
     ) -> Result<Option<T>, edgedb_tokio::Error>;
 
-    async fn query_json(
+    async fn query_json<'a>(
         self,
-        edgedb: &edgedb_tokio::Client,
+        connection: impl Into<Connection<'a>> + Send,
     ) -> Result<edgedb_protocol::model::Json, edgedb_tokio::Error>;
 
-    async fn query_single_json(
+    async fn query_single_json<'a>(
         self,
-        edgedb: &edgedb_tokio::Client,
+        connection: impl Into<Connection<'a>> + Send,
     ) -> Result<Option<edgedb_protocol::model::Json>, edgedb_tokio::Error>;
 }
 
@@ -231,37 +231,95 @@ macro_rules! elapsed {
     }};
 }
 
+#[derive(Debug)]
+pub enum Connection<'a> {
+    Client(&'a edgedb_tokio::Client),
+    Transaction(&'a mut edgedb_tokio::Transaction),
+}
+
+impl<'a> From<&'a edgedb_tokio::Client> for Connection<'a> {
+    fn from(x: &'a edgedb_tokio::Client) -> Self {
+        Self::Client(x)
+    }
+}
+
+impl<'a> From<&'a mut edgedb_tokio::Transaction> for Connection<'a> {
+    fn from(x: &'a mut edgedb_tokio::Transaction) -> Self {
+        Self::Transaction(x)
+    }
+}
+
 #[async_trait::async_trait]
 impl<Q> QueryExecution for Q
 where
     Q: ToQuery,
 {
-    async fn query<T: Queryable + Send>(
+    async fn query<'a, T: Queryable + Send>(
         self,
-        edgedb: &edgedb_tokio::Client,
+        connection: impl Into<Connection<'a>> + Send,
     ) -> Result<Vec<T>, edgedb_tokio::Error> {
-        elapsed!(edgedb.query::<T, _>(&self.to_query(), &()).await)
+        let connection = connection.into();
+        elapsed! {
+            match connection {
+                Connection::Client(x) => {
+                    x.query::<T, _>(&self.to_query(), &()).await
+                }
+                Connection::Transaction(x) => {
+                    x.query::<T, _>(&self.to_query(), &()).await
+                }
+            }
+        }
     }
 
-    async fn query_single<T: Queryable + Send>(
+    async fn query_single<'a, T: Queryable + Send>(
         self,
-        edgedb: &edgedb_tokio::Client,
+        connection: impl Into<Connection<'a>> + Send,
     ) -> Result<Option<T>, edgedb_tokio::Error> {
-        elapsed!(edgedb.query_single::<T, _>(&self.to_query(), &()).await)
+        let connection = connection.into();
+        elapsed! {
+            match connection {
+                Connection::Client(x) => {
+                    x.query_single::<T, _>(&self.to_query(), &()).await
+                }
+                Connection::Transaction(x) => {
+                    x.query_single::<T, _>(&self.to_query(), &()).await
+                }
+            }
+        }
     }
 
-    async fn query_json(
+    async fn query_json<'a>(
         self,
-        edgedb: &edgedb_tokio::Client,
+        connection: impl Into<Connection<'a>> + Send,
     ) -> Result<edgedb_protocol::model::Json, edgedb_tokio::Error> {
-        elapsed!(edgedb.query_json(&self.to_query(), &()).await)
+        let connection = connection.into();
+        elapsed! {
+            match connection {
+                Connection::Client(x) => {
+                    x.query_json(&self.to_query(), &()).await
+                }
+                Connection::Transaction(x) => {
+                    x.query_json(&self.to_query(), &()).await
+                }
+            }
+        }
     }
 
-    async fn query_single_json(
+    async fn query_single_json<'a>(
         self,
-        edgedb: &edgedb_tokio::Client,
+        connection: impl Into<Connection<'a>> + Send,
     ) -> Result<Option<edgedb_protocol::model::Json>, edgedb_tokio::Error> {
-        elapsed!(edgedb.query_single_json(&self.to_query(), &()).await)
+        let connection = connection.into();
+        elapsed! {
+            match connection {
+                Connection::Client(x) => {
+                    x.query_single_json(&self.to_query(), &()).await
+                }
+                Connection::Transaction(x) => {
+                    x.query_single_json(&self.to_query(), &()).await
+                }
+            }
+        }
     }
 }
 
