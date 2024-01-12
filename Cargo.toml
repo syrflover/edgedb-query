@@ -6,11 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-edgedb-tokio = { git = "https://github.com/edgedb/edgedb-rust", rev = "61ce47d" }
-edgedb-protocol = { git = "https://github.com/edgedb/edgedb-rust", rev = "61ce47d" }
-edgedb-derive = { git = "https://github.com/edgedb/edgedb-rust", rev = "61ce47d" }
+edgedb-tokio = { git = "https://github.com/edgedb/edgedb-rust", rev = "60309cf" }
+edgedb-protocol = { git = "https://github.com/edgedb/edgedb-rust", rev = "60309cf" }
 
-either = "1.8"
+either = "1.9"
 tap = "1.0"
 dyn-clone = "1.0"
 iter_tools = "0.1"
