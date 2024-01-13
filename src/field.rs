@@ -1,19 +1,38 @@
-use either::Either;
-
 use super::{push_str, ToQuery};
 
 #[derive(Clone)]
+pub enum FieldType<'a> {
+    Expr(Box<dyn ToQuery + 'a>),
+    Field(Vec<Field<'a>>),
+    SingleSplat,
+    DoubleSplat,
+}
+
+#[derive(Clone)]
 pub struct Field<'a> {
-    name: &'a str,
-    fields: Either<Box<dyn ToQuery + 'a>, Vec<Field<'a>>>,
+    /// None if splat
+    name: Option<&'a str>,
+    fields: FieldType<'a>,
 }
 
 impl<'a> Field<'a> {
-    pub fn new(name: &'a str) -> Self {
+    pub fn new(name: impl Into<Option<&'a str>>) -> Self {
         Self {
-            name,
-            fields: Either::Right(Vec::new()),
+            name: name.into(),
+            fields: FieldType::Field(Vec::new()),
         }
+    }
+
+    pub fn single_splat(mut self) -> Self {
+        self.fields = FieldType::SingleSplat;
+
+        self
+    }
+
+    pub fn double_splat(mut self) -> Self {
+        self.fields = FieldType::DoubleSplat;
+
+        self
     }
 
     pub fn expr<T>(mut self, expr: T) -> Self
@@ -21,8 +40,8 @@ impl<'a> Field<'a> {
         T: ToQuery + 'a,
     {
         match &mut self.fields {
-            Either::Left(x) => *x = Box::new(expr),
-            Either::Right(_fields) => self.fields = Either::Left(Box::new(expr)),
+            FieldType::Expr(x) => *x = Box::new(expr),
+            _ => self.fields = FieldType::Expr(Box::new(expr)),
         }
 
         self
@@ -30,11 +49,11 @@ impl<'a> Field<'a> {
 
     pub fn nest(mut self, field: Field<'a>) -> Self {
         match &mut self.fields {
-            Either::Left(_expr) => {
-                self.fields = Either::Right(vec![field]);
-            }
-            Either::Right(fields) => {
+            FieldType::Field(fields) => {
                 fields.push(field);
+            }
+            _ => {
+                self.fields = FieldType::Field(vec![field]);
             }
         }
 
@@ -58,10 +77,20 @@ impl<'a> ToQuery for Field<'a> {
         let mut qx = String::new();
         let q = &mut qx;
 
-        push_str(q, self.name, indent);
+        if let Some(name) = self.name {
+            push_str(q, name, indent);
+        }
 
         match &self.fields {
-            Either::Left(expr) => {
+            FieldType::SingleSplat => {
+                q.push('*');
+                q.push(',');
+            }
+            FieldType::DoubleSplat => {
+                q.push_str("**");
+                q.push(',');
+            }
+            FieldType::Expr(expr) => {
                 q.push(' ');
                 q.push_str(":=");
                 q.push(' ');
@@ -74,7 +103,7 @@ impl<'a> ToQuery for Field<'a> {
                 q.push('\n');
                 push_str(q, ")", indent);
             }
-            Either::Right(nested_fields) if !nested_fields.is_empty() => {
+            FieldType::Field(nested_fields) if !nested_fields.is_empty() => {
                 q.push(':');
                 q.push(' ');
 
@@ -96,6 +125,7 @@ impl<'a> ToQuery for Field<'a> {
                 push_str(q, "}", indent);
                 q.push(',');
             }
+
             _ => {
                 q.push(',');
             }
@@ -123,6 +153,81 @@ impl<'a> ToQuery for Field<'a> {
 #[macro_export]
 macro_rules! fields {
     (
+        * $(,)?
+    ) => {
+        [
+            Field::new(None).single_splat(),
+        ]
+    };
+
+    (
+        * $(,)?
+        $(
+            $field:ident $(,)?
+            $(: { $($nested_field:ident $(,)?)* } $(,)?)?
+            $(: [ $nested_fields:expr $(,)? ] $(,)?)?
+            $(:= $expr:expr $(,)?)?
+        )+
+    ) => {
+        [
+            Field::new(None).single_splat(),
+            $(
+                Field::new(stringify!($field))
+                $(
+                    $(
+                        .nest(Field::new(stringify!($nested_field)))
+                    )*
+                )?
+                $(
+                    .nests($nested_fields)
+                )?
+                $(
+                    .expr($expr)
+                )?
+                ,
+            )+
+        ]
+    };
+
+    (
+        ** $(,)?
+    ) => {
+        [
+            Field::new(None).double_splat(),
+        ]
+    };
+
+    (
+        ** $(,)?
+        $(
+            $field:ident $(,)?
+            $(: { $($nested_field:ident $(,)?)* } $(,)?)?
+            $(: [ $nested_fields:expr $(,)? ] $(,)?)?
+            $(:= $expr:expr $(,)?)?
+        )+
+    ) => {
+        [
+            Field::new(None).double_splat(),
+            $(
+                Field::new(stringify!($field))
+                $(
+                    $(
+                        .nest(Field::new(stringify!($nested_field)))
+                    )*
+                )?
+                $(
+                    .nests($nested_fields)
+                )?
+                $(
+                    .expr($expr)
+                )?
+                ,
+            )+
+        ]
+    };
+
+
+    (
         $(
             $field:ident $(,)?
             $(: { $($nested_field:ident $(,)?)* } $(,)?)?
@@ -148,7 +253,6 @@ macro_rules! fields {
             )*
         ]
     };
-
 }
 
 // fn a() {
@@ -175,6 +279,58 @@ mod tests {
 
         let fields = fields! {
             title,
+            e: [ another_fields ],
+            aa := raw("(tag.name, tag.kind)"),
+            book_tags: {
+                kind,
+                name
+            },
+        };
+
+        let mut r = String::new();
+
+        push_fields(&mut r, fields, 0);
+
+        println!("{r}");
+    }
+
+    #[test]
+    fn print_single_splat() {
+        let another_fields = fields! {
+            id,
+        };
+
+        fields! { * };
+        fields! { *, };
+
+        let fields = fields! {
+            *,
+            e: [ another_fields ],
+            aa := raw("(tag.name, tag.kind)"),
+            book_tags: {
+                kind,
+                name
+            },
+        };
+
+        let mut r = String::new();
+
+        push_fields(&mut r, fields, 0);
+
+        println!("{r}");
+    }
+
+    #[test]
+    fn print_double_splat() {
+        let another_fields = fields! {
+            id,
+        };
+
+        fields! { ** };
+        fields! { **, };
+
+        let fields = fields! {
+            **,
             e: [ another_fields ],
             aa := raw("(tag.name, tag.kind)"),
             book_tags: {
