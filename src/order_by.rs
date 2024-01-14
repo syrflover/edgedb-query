@@ -1,17 +1,25 @@
+use std::borrow::Cow;
+
 use super::{push_str, ToQuery};
+
+// TODO: multiple argments 지원
+// 현재는 $?를 통해 인자 하나만 받을 수 있도록 구현돼있음
 
 #[derive(Clone)]
 pub struct OrderBy<'a> {
-    by: &'a str,
+    by: Cow<'a, str>,
     direction: Option<OrderDirection>,
 }
 
-pub fn order_by(by: &str, direction: impl Into<Option<OrderDirection>>) -> OrderBy {
-    OrderBy::new(by, direction)
+pub fn order_by<'a>(
+    by: impl Into<Cow<'a, str>>,
+    direction: impl Into<Option<OrderDirection>>,
+) -> OrderBy<'a> {
+    OrderBy::new(by.into(), direction)
 }
 
 impl<'a> OrderBy<'a> {
-    pub fn new(by: &'a str, direction: impl Into<Option<OrderDirection>>) -> Self {
+    pub fn new(by: Cow<'a, str>, direction: impl Into<Option<OrderDirection>>) -> Self {
         Self {
             by,
             direction: direction.into(),
@@ -24,7 +32,7 @@ impl<'a> ToQuery for OrderBy<'a> {
         let mut qx = String::new();
         let q = &mut qx;
 
-        push_str(q, self.by, 2 + indent);
+        push_str(q, &self.by, 2 + indent);
 
         if let Some(direction) = self.direction {
             q.push(' ');
