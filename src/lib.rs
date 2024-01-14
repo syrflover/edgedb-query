@@ -240,6 +240,11 @@ pub trait QueryExecution: Sized {
         self,
         connection: impl Into<Connection<'a>> + Send,
     ) -> Result<Option<edgedb_protocol::model::Json>, edgedb_tokio::Error>;
+
+    async fn execute<'a>(
+        self,
+        connection: impl Into<Connection<'a>> + Send,
+    ) -> Result<(), edgedb_tokio::Error>;
 }
 
 /// for query exectuion
@@ -339,6 +344,23 @@ where
                 }
                 Connection::Transaction(x) => {
                     x.query_single_json(&self.to_query(), &()).await
+                }
+            }
+        }
+    }
+
+    async fn execute<'a>(
+        self,
+        connection: impl Into<Connection<'a>> + Send,
+    ) -> Result<(), edgedb_tokio::Error> {
+        let connection = connection.into();
+        elapsed! {
+            match connection {
+                Connection::Client(x) => {
+                    x.execute(&self.to_query(), &()).await
+                }
+                Connection::Transaction(x) => {
+                    x.execute(&self.to_query(), &()).await
                 }
             }
         }
