@@ -85,7 +85,7 @@ impl<'a> ToQuery for OnConflict<'a> {
 pub struct InsertBuilder<'a> {
     target: &'a str,
     withs: Vec<With<'a>>,
-    values: Vec<(&'a str, QueryArgOrExpr<'a>)>,
+    values: Vec<(&'a str, Assign, QueryArgOrExpr<'a>)>,
     on_conflict: Option<OnConflict<'a>>,
 }
 
@@ -113,7 +113,8 @@ impl<'a> InsertBuilder<'a> {
     where
         T: ToQueryArg + 'a,
     {
-        self.values.push((field, Either::Left(Box::new(v))));
+        self.values
+            .push((field, Assign::Replace, Either::Left(Box::new(v))));
 
         self
     }
@@ -122,7 +123,8 @@ impl<'a> InsertBuilder<'a> {
     where
         T: ToQuery + 'a,
     {
-        self.values.push((field, Either::Right(Box::new(v))));
+        self.values
+            .push((field, Assign::Replace, Either::Right(Box::new(v))));
 
         self
     }

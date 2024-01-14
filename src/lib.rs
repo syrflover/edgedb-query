@@ -103,17 +103,29 @@ fn push_filter<'a>(q: &mut String, filter: Option<&'a Filter<'a>>, indent: usize
 
 fn push_object<'a>(
     q: &mut String,
-    obj: impl IntoIterator<Item = &'a (&'a str, QueryArgOrExpr<'a>)>,
+    obj: impl IntoIterator<Item = &'a (&'a str, Assign, QueryArgOrExpr<'a>)>,
     indent: usize,
 ) {
     q.push('{');
 
-    for (field, value) in obj {
+    for (field, assign, value) in obj {
         q.push('\n');
         push_str(q, field, 2 + indent);
 
         q.push(' ');
-        q.push_str(":=");
+
+        match assign {
+            Assign::Add => {
+                q.push_str("+=");
+            }
+            Assign::Remove => {
+                q.push_str("-=");
+            }
+            Assign::Replace => {
+                q.push_str(":=");
+            }
+        }
+
         q.push(' ');
 
         match value {
@@ -137,6 +149,16 @@ fn push_object<'a>(
 
     q.push('\n');
     push(q, '}', indent);
+}
+
+#[derive(Clone, Copy)]
+pub enum Assign {
+    /// +=
+    Add,
+    /// -=
+    Remove,
+    /// :=
+    Replace,
 }
 
 /// tag.<book_tags[is Book]

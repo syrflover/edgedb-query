@@ -7,7 +7,7 @@ pub struct UpdateBuilder<'a> {
     target: &'a str,
     withs: Vec<With<'a>>,
     filter: Option<Filter<'a>>,
-    values: Vec<(&'a str, QueryArgOrExpr<'a>)>,
+    values: Vec<(&'a str, Assign, QueryArgOrExpr<'a>)>,
 }
 
 pub fn update(target: &str) -> UpdateBuilder {
@@ -36,31 +36,33 @@ impl<'a> UpdateBuilder<'a> {
         self
     }
 
-    pub fn set<T>(mut self, field: &'a str, value: T) -> Self
+    pub fn set<T>(mut self, field: &'a str, assign: Assign, value: T) -> Self
     where
         T: ToQueryArg + 'a,
     {
-        self.values.push((field, Either::Left(Box::new(value))));
+        self.values
+            .push((field, assign, Either::Left(Box::new(value))));
 
         self
     }
 
-    pub fn set_opt<T>(self, field: &'a str, opt_value: Option<T>) -> Self
+    pub fn set_opt<T>(self, field: &'a str, assign: Assign, opt_value: Option<T>) -> Self
     where
         T: ToQueryArg + 'a,
     {
         if let Some(value) = opt_value {
-            self.set(field, value)
+            self.set(field, assign, value)
         } else {
             self
         }
     }
 
-    pub fn set_expr<T>(mut self, field: &'a str, expr: T) -> Self
+    pub fn set_expr<T>(mut self, field: &'a str, assign: Assign, expr: T) -> Self
     where
         T: ToQuery + 'a,
     {
-        self.values.push((field, Either::Right(Box::new(expr))));
+        self.values
+            .push((field, assign, Either::Right(Box::new(expr))));
 
         self
     }
@@ -113,7 +115,7 @@ mod tests {
     fn print() {
         let query = update("Book")
             .filter(filter().add(AND, ".uid = $?", 1234))
-            .set("released", true)
+            .set("released", Assign::Replace, true)
             .to_query();
 
         println!("{query}");
