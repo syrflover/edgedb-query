@@ -10,7 +10,7 @@ mod select;
 mod update;
 mod with;
 
-use std::time::SystemTime;
+use std::{borrow::Cow, time::SystemTime};
 
 pub use field::*;
 pub use filter::*;
@@ -173,15 +173,15 @@ pub trait TypeName {
 type QueryArgOrExpr<'a> = Either<Box<dyn ToQueryArg + 'a>, Box<dyn ToQuery + 'a>>;
 
 #[derive(Clone)]
-pub struct Raw<'a>(&'a str);
+pub struct Raw<'a>(Cow<'a, str>);
 
-pub fn raw(raw: &str) -> Raw {
+pub fn raw<'a>(raw: impl Into<Cow<'a, str>>) -> Raw<'a> {
     Raw::new(raw)
 }
 
 impl<'a> Raw<'a> {
-    pub fn new(raw: &'a str) -> Self {
-        Self(raw)
+    pub fn new(raw: impl Into<Cow<'a, str>>) -> Self {
+        Self(raw.into())
     }
 }
 
@@ -190,7 +190,7 @@ impl<'a> ToQuery for Raw<'a> {
         let mut qx = String::new();
         let q = &mut qx;
 
-        push_str(q, self.0, indent);
+        push_str(q, &self.0, indent);
 
         qx
     }
