@@ -251,6 +251,8 @@ pub trait QueryExecution: Sized {
 #[macro_export]
 macro_rules! query_elapsed {
     ($expr:expr) => {{
+        use tap::Tap;
+
         let timer = ::std::time::SystemTime::now();
         $expr.tap(|_| {
             let elapsed = timer.elapsed().unwrap_or_default().as_millis();
