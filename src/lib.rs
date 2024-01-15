@@ -248,7 +248,8 @@ pub trait QueryExecution: Sized {
 }
 
 /// for query exectuion
-macro_rules! elapsed {
+#[macro_export]
+macro_rules! query_elapsed {
     ($expr:expr) => {{
         let timer = SystemTime::now();
         $expr.tap(|_| {
@@ -286,7 +287,7 @@ where
         connection: impl Into<Connection<'a>> + Send,
     ) -> Result<Vec<T>, edgedb_tokio::Error> {
         let connection = connection.into();
-        elapsed! {
+        query_elapsed! {
             match connection {
                 Connection::Client(x) => {
                     x.query::<T, _>(&self.to_query(), &()).await
@@ -303,7 +304,7 @@ where
         connection: impl Into<Connection<'a>> + Send,
     ) -> Result<Option<T>, edgedb_tokio::Error> {
         let connection = connection.into();
-        elapsed! {
+        query_elapsed! {
             match connection {
                 Connection::Client(x) => {
                     x.query_single::<T, _>(&self.to_query(), &()).await
@@ -320,7 +321,7 @@ where
         connection: impl Into<Connection<'a>> + Send,
     ) -> Result<edgedb_protocol::model::Json, edgedb_tokio::Error> {
         let connection = connection.into();
-        elapsed! {
+        query_elapsed! {
             match connection {
                 Connection::Client(x) => {
                     x.query_json(&self.to_query(), &()).await
@@ -337,7 +338,7 @@ where
         connection: impl Into<Connection<'a>> + Send,
     ) -> Result<Option<edgedb_protocol::model::Json>, edgedb_tokio::Error> {
         let connection = connection.into();
-        elapsed! {
+        query_elapsed! {
             match connection {
                 Connection::Client(x) => {
                     x.query_single_json(&self.to_query(), &()).await
@@ -354,7 +355,7 @@ where
         connection: impl Into<Connection<'a>> + Send,
     ) -> Result<(), edgedb_tokio::Error> {
         let connection = connection.into();
-        elapsed! {
+        query_elapsed! {
             match connection {
                 Connection::Client(x) => {
                     x.execute(&self.to_query(), &()).await
