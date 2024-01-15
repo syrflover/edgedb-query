@@ -10,7 +10,7 @@ mod select;
 mod update;
 mod with;
 
-use std::{borrow::Cow, time::SystemTime};
+use std::borrow::Cow;
 
 pub use field::*;
 pub use filter::*;
@@ -251,7 +251,7 @@ pub trait QueryExecution: Sized {
 #[macro_export]
 macro_rules! query_elapsed {
     ($expr:expr) => {{
-        let timer = SystemTime::now();
+        let timer = ::std::time::SystemTime::now();
         $expr.tap(|_| {
             let elapsed = timer.elapsed().unwrap_or_default().as_millis();
             tracing::info!("query execution time: {} ms", elapsed)
